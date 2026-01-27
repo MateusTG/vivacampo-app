@@ -10,7 +10,7 @@ services:
     ports: ["5432:5432"]
     volumes:
       - dbdata:/var/lib/postgresql/data
-      - ./infra/migrations/sql:/docker-entrypoint-initdb.d:ro
+      - ./infra/migrations/sql:/docker-entrypoint-initdb.d:ro,z
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vivacampo -d vivacampo"]
       interval: 5s
@@ -35,7 +35,7 @@ services:
     volumes:
       - localstackdata:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./infra/docker/localstack-init:/etc/localstack/init/ready.d
+      - ./infra/docker/localstack-init:/etc/localstack/init/ready.d:z
     healthcheck:
       test: ["CMD", "bash", "-c", "awslocal sqs get-queue-url --queue-name vivacampo-jobs"]
       interval: 5s
@@ -49,12 +49,11 @@ services:
     environment:
       - PYTHONPATH=/app
     depends_on:
-      db: { condition: service_healthy }
       localstack: { condition: service_healthy }
       redis: { condition: service_started }
-    ports: ["8000:8000"]
+    network_mode: host
     volumes:
-      - ./services/api:/app
+      - ./services/api:/app:z
     command:
       [
         "uvicorn",
@@ -71,11 +70,11 @@ services:
     build: { context: ./services/worker }
     env_file: ["./infra/docker/env/.env.local"]
     depends_on:
-      db: { condition: service_healthy }
       localstack: { condition: service_healthy }
       redis: { condition: service_started }
+    network_mode: host
     volumes:
-      - ./services/worker:/app
+      - ./services/worker:/app:z
     environment:
       - GDAL_HTTP_MAX_RETRY=5
       - GDAL_HTTP_RETRY_DELAY=1
@@ -88,7 +87,7 @@ services:
     env_file: ["./infra/docker/env/.env.local"]
     ports: ["8080:8080"]
     volumes:
-      - ./services/tiler:/app
+      - ./services/tiler:/app:z
     command:
       [
         "uvicorn",
@@ -110,7 +109,7 @@ services:
       - NEXT_PUBLIC_BASE_PATH=/admin
     ports: ["3001:3000"]
     volumes:
-      - ./services/admin-ui:/app
+      - ./services/admin-ui:/app:z
       - /app/node_modules
       - /app/.next
     command: ["npm", "run", "dev"]
@@ -130,7 +129,7 @@ services:
       - NEXT_PUBLIC_ENABLE_MOCK_AUTH=true
     ports: ["3002:3000"]
     volumes:
-      - ./services/app-ui:/app
+      - ./services/app-ui:/app:z
       - /app/node_modules
       - /app/.next
     command: ["npm", "run", "dev"]
@@ -146,7 +145,7 @@ services:
       - ENABLE_GPU=false
     ports: ["8090:8090"]
     volumes:
-      - ./services/vision-service:/app
+      - ./services/vision-service:/app:z
       - vision_models:/app/models/cache
       - vision_tflite:/app/models/tflite
     command:

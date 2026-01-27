@@ -23,10 +23,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
-COPY models_tflite/ ./models_tflite/
 
-# Create necessary directories
-RUN mkdir -p /app/data /app/logs
+# Create necessary directories (models will be downloaded or mounted)
+RUN mkdir -p /app/data /app/logs /app/models_tflite
 
 # Environment variables
 ENV PYTHONPATH=/app

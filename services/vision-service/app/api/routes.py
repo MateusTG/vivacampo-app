@@ -352,14 +352,5 @@ async def assess_swine_health(file: UploadFile = File(...)):
 
 
 # ==================== Error Handlers ====================
-
-
-@router.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=ErrorResponse(
-            success=False,
-            error=exc.detail,
-        ).model_dump(),
-    )
+# Note: Exception handlers should be added to the FastAPI app instance in main.py,
+# not to the router. APIRouter does not support exception_handler decorator.

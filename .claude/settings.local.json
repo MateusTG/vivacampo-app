@@ -17,7 +17,12 @@
       "Bash(findstr:*)",
       "Bash(wc -l \"c:\\\\projects\\\\vivacampo-app\\\\services\\\\app-ui\\\\src\\\\app\"/**/*.tsx)",
       "Bash(docker ps:*)",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(python3.13 -m venv:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(docker compose:*)",
+      "Bash(ls:*)"
     ]
   }
 }
