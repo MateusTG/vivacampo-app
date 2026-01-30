@@ -1,4 +1,4 @@
-name: vivacampo
+version: "3.8"
 
 services:
   # ============================================================================
@@ -34,8 +34,7 @@ services:
       - TILER_BASE_URL=http://tiler:8080
       - VISION_SERVICE_URL=http://vision:8090
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - vivacampo-net
     expose:
@@ -48,12 +47,6 @@ services:
       start_period: 40s
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 512M
 
   # ============================================================================
   # WORKER - Background Jobs
@@ -74,18 +67,11 @@ services:
       - GDAL_HTTP_RETRY_DELAY=1
       - GDAL_HTTP_RETRY_CODES=409,429,500,502,503,504
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - vivacampo-net
     command: ["python", "-m", "worker.main"]
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 1G
 
   # ============================================================================
   # TILER - GeoTIFF Tile Server
@@ -108,12 +94,6 @@ services:
       retries: 3
     command: ["uvicorn", "tiler.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 512M
 
   # ============================================================================
   # ADMIN UI - Next.js
@@ -138,12 +118,6 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
 
   # ============================================================================
   # APP UI - Next.js
@@ -169,12 +143,6 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
 
   # ============================================================================
   # VISION - TensorFlow ML Service
@@ -206,15 +174,9 @@ services:
       start_period: 60s
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--workers", "2"]
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
 
   # ============================================================================
-  # NGINX - Reverse Proxy (produção)
+  # NGINX - Reverse Proxy
   # ============================================================================
   nginx:
     image: nginx:alpine
