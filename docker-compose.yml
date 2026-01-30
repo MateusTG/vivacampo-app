@@ -1,163 +1,210 @@
 name: vivacampo
 
 services:
-  db:
-    image: postgis/postgis:16-3.4
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: neondb_owner
-      POSTGRES_PASSWORD: npg_D9Uhs5MVKgSo
-    ports: ["5432:5432"]
-    volumes:
-      - dbdata:/var/lib/postgresql/data
-      - ./infra/migrations/sql:/docker-entrypoint-initdb.d:ro,z
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U neondb_owner -d postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
+  # ============================================================================
+  # REDIS
+  # ============================================================================
   redis:
     image: redis:7-alpine
-    ports: ["6379:6379"]
     command: ["redis-server", "--appendonly", "yes"]
-    volumes: ["redisdata:/data"]
-
-  localstack:
-    image: localstack/localstack:latest
-    ports: ["4566:4566"]
-    environment:
-      - SERVICES=s3,sqs
-      - AWS_DEFAULT_REGION=sa-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - PERSISTENCE=1
     volumes:
-      - localstackdata:/var/lib/localstack
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./infra/docker/localstack-init:/etc/localstack/init/ready.d:z
+      - redisdata:/data
     healthcheck:
-      test: ["CMD", "bash", "-c", "awslocal sqs get-queue-url --queue-name vivacampo-jobs"]
-      interval: 5s
-      timeout: 10s
-      retries: 20
-      start_period: 10s
-
-  api:
-    build: { context: ./services/api }
-    env_file: ["./infra/docker/env/.env.local"]
-    environment:
-      - PYTHONPATH=/app
-    depends_on:
-      localstack: { condition: service_healthy }
-      redis: { condition: service_started }
-    network_mode: host
-    volumes:
-      - ./services/api:/app:z
-    command:
-      [
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8000",
-        "--reload",
-      ]
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vivacampo-net
     restart: unless-stopped
 
-  worker:
-    build: { context: ./services/worker }
-    env_file: ["./infra/docker/env/.env.local"]
-    depends_on:
-      localstack: { condition: service_healthy }
-      redis: { condition: service_started }
-    network_mode: host
-    volumes:
-      - ./services/worker:/app:z
+  # ============================================================================
+  # API - FastAPI Backend
+  # ============================================================================
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    image: vivacampo/api:${TAG:-latest}
+    env_file:
+      - ./infra/docker/env/.env.local
     environment:
+      - PYTHONPATH=/app
+      - REDIS_URL=redis://redis:6379
+      - TILER_BASE_URL=http://tiler:8080
+      - VISION_SERVICE_URL=http://vision:8090
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - vivacampo-net
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  # ============================================================================
+  # WORKER - Background Jobs
+  # ============================================================================
+  worker:
+    build:
+      context: ./services/worker
+      dockerfile: Dockerfile
+    image: vivacampo/worker:${TAG:-latest}
+    env_file:
+      - ./infra/docker/env/.env.local
+    environment:
+      - PYTHONPATH=/app
+      - REDIS_URL=redis://redis:6379
+      - TILER_BASE_URL=http://tiler:8080
+      - VISION_SERVICE_URL=http://vision:8090
       - GDAL_HTTP_MAX_RETRY=5
       - GDAL_HTTP_RETRY_DELAY=1
       - GDAL_HTTP_RETRY_CODES=409,429,500,502,503,504
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - vivacampo-net
     command: ["python", "-m", "worker.main"]
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
 
+  # ============================================================================
+  # TILER - GeoTIFF Tile Server
+  # ============================================================================
   tiler:
-    build: { context: ./services/tiler }
-    env_file: ["./infra/docker/env/.env.local"]
-    ports: ["8080:8080"]
-    volumes:
-      - ./services/tiler:/app:z
-    command:
-      [
-        "uvicorn",
-        "tiler.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8080",
-        "--reload",
-      ]
+    build:
+      context: ./services/tiler
+      dockerfile: Dockerfile
+    image: vivacampo/tiler:${TAG:-latest}
+    env_file:
+      - ./infra/docker/env/.env.local
+    networks:
+      - vivacampo-net
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    command: ["uvicorn", "tiler.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
 
+  # ============================================================================
+  # ADMIN UI - Next.js
+  # ============================================================================
   admin_ui:
     build:
       context: ./services/admin-ui
-      target: deps
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/api}
+        NEXT_PUBLIC_BASE_PATH: /admin
+    image: vivacampo/admin-ui:${TAG:-latest}
     environment:
-      - NEXT_PUBLIC_API_BASE=http://localhost:8000
-      - NEXT_PUBLIC_BASE_PATH=/admin
-    ports: ["3001:3000"]
-    volumes:
-      - ./services/admin-ui:/app:z
-      - /app/node_modules
-      - /app/.next
-    command: ["npm", "run", "dev"]
+      - NODE_ENV=production
+    networks:
+      - vivacampo-net
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/admin"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
+  # ============================================================================
+  # APP UI - Next.js
+  # ============================================================================
   app_ui:
     build:
       context: ./services/app-ui
+      dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_BASE: /app/api
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-/api}
         NEXT_PUBLIC_BASE_PATH: /app
-        NEXT_PUBLIC_ENABLE_MOCK_AUTH: "true"
-      target: deps
+        NEXT_PUBLIC_ENABLE_MOCK_AUTH: ${NEXT_PUBLIC_ENABLE_MOCK_AUTH:-false}
+    image: vivacampo/app-ui:${TAG:-latest}
     environment:
-      - NEXT_PUBLIC_API_BASE=/app/api
-      - NEXT_PUBLIC_BASE_PATH=/app
-      - NEXT_PUBLIC_ENABLE_MOCK_AUTH=true
-    ports: ["3002:3000"]
-    volumes:
-      - ./services/app-ui:/app:z
-      - /app/node_modules
-      - /app/.next
-    command: ["npm", "run", "dev"]
+      - NODE_ENV=production
+    networks:
+      - vivacampo-net
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/app"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
+  # ============================================================================
+  # VISION - TensorFlow ML Service
+  # ============================================================================
   vision:
-    build: { context: ./services/vision-service }
-    env_file: ["./infra/docker/env/.env.local"]
+    build:
+      context: ./services/vision-service
+      dockerfile: Dockerfile
+    image: vivacampo/vision:${TAG:-latest}
+    env_file:
+      - ./infra/docker/env/.env.local
     environment:
       - PYTHONPATH=/app
       - MODEL_CACHE_DIR=/app/models/cache
       - TFLITE_DIR=/app/models/tflite
       - ENABLE_GPU=false
-    ports: ["8090:8090"]
     volumes:
-      - ./services/vision-service:/app:z
       - vision_models:/app/models/cache
       - vision_tflite:/app/models/tflite
-    command:
-      [
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8090",
-        "--reload",
-      ]
+    networks:
+      - vivacampo-net
+    expose:
+      - "8090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--workers", "2"]
     restart: unless-stopped
     deploy:
       resources:
@@ -166,42 +213,38 @@ services:
         reservations:
           memory: 2G
 
-  vision-gpu:
-    build:
-      context: ./services/vision-service
-      dockerfile: Dockerfile.gpu
-    env_file: ["./infra/docker/env/.env.local"]
-    environment:
-      - PYTHONPATH=/app
-      - MODEL_CACHE_DIR=/app/models/cache
-      - TFLITE_DIR=/app/models/tflite
-      - ENABLE_GPU=true
-    ports: ["8091:8090"]
+  # ============================================================================
+  # NGINX - Reverse Proxy (produção)
+  # ============================================================================
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./services/vision-service:/app
-      - vision_models:/app/models/cache
-      - vision_tflite:/app/models/tflite
-    command:
-      [
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8090",
-      ]
-    profiles: ["gpu"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/ssl:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    depends_on:
+      - api
+      - tiler
+      - admin_ui
+      - app_ui
+    networks:
+      - vivacampo-net
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  vivacampo-net:
+    driver: bridge
 
 volumes:
-  dbdata:
   redisdata:
-  localstackdata:
   vision_models:
   vision_tflite:
+  certbot_webroot:
