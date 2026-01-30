@@ -31,8 +31,8 @@ services:
     environment:
       - PYTHONPATH=/app
       - REDIS_URL=redis://redis:6379
-      - TILER_BASE_URL=http://tiler:8080
-      - VISION_SERVICE_URL=http://vision:8090
+      - TILER_BASE_URL=${TILER_BASE_URL:-}
+      - VISION_SERVICE_URL=${VISION_SERVICE_URL:-}
     depends_on:
       - redis
     networks:
@@ -45,7 +45,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     restart: unless-stopped
 
   # ============================================================================
@@ -61,8 +61,8 @@ services:
     environment:
       - PYTHONPATH=/app
       - REDIS_URL=redis://redis:6379
-      - TILER_BASE_URL=http://tiler:8080
-      - VISION_SERVICE_URL=http://vision:8090
+      - TILER_BASE_URL=${TILER_BASE_URL:-}
+      - VISION_SERVICE_URL=${VISION_SERVICE_URL:-}
       - GDAL_HTTP_MAX_RETRY=5
       - GDAL_HTTP_RETRY_DELAY=1
       - GDAL_HTTP_RETRY_CODES=409,429,500,502,503,504
@@ -74,7 +74,7 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # TILER - GeoTIFF Tile Server
+  # TILER - GeoTIFF Tile Server (opcional - use profile 'full')
   # ============================================================================
   tiler:
     build:
@@ -94,6 +94,8 @@ services:
       retries: 3
     command: ["uvicorn", "tiler.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "2"]
     restart: unless-stopped
+    profiles:
+      - full
 
   # ============================================================================
   # ADMIN UI - Next.js
@@ -145,7 +147,7 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # VISION - TensorFlow ML Service
+  # VISION - TensorFlow ML Service (opcional - use profile 'full')
   # ============================================================================
   vision:
     build:
@@ -174,6 +176,8 @@ services:
       start_period: 60s
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--workers", "2"]
     restart: unless-stopped
+    profiles:
+      - full
 
   # ============================================================================
   # NGINX - Reverse Proxy
@@ -189,7 +193,6 @@ services:
       - certbot_webroot:/var/www/certbot:ro
     depends_on:
       - api
-      - tiler
       - admin_ui
       - app_ui
     networks:
