@@ -32,6 +32,7 @@ venv/
 .venv/
 env/
 .env
+.env.*
 .pytest_cache/
 .coverage
 htmlcov/
@@ -39,6 +40,10 @@ htmlcov/
 
 # Docker
 docker-compose.override.yml
+
+# Production secrets (NEVER commit!)
+.env.prod
+infra/nginx/ssl/
 
 # Logs & Temporary Files
 *.log

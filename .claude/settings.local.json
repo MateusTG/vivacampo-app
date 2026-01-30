@@ -22,7 +22,8 @@
       "Bash(source:*)",
       "Bash(pip install:*)",
       "Bash(docker compose:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(python3:*)"
     ]
   }
 }

@@ -45,6 +45,7 @@ const nextConfig = {
         ]
     },
     async rewrites() {
+        const apiHost = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000'
         return [
             {
                 source: '/api/cog/:path*',
@@ -52,11 +53,11 @@ const nextConfig = {
             },
             {
                 source: '/api/v1/auth/oidc/login',
-                destination: 'http://api:8000/v1/auth/oidc/login',
+                destination: `${apiHost}/v1/auth/oidc/login`,
             },
             {
                 source: '/api/:path*',
-                destination: 'http://api:8000/:path*',
+                destination: `${apiHost}/:path*`,
             },
         ]
     },

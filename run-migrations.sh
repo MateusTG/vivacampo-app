@@ -10,8 +10,8 @@ echo "========================================="
 echo ""
 
 # Check if database container is running
-if ! docker ps | grep -q vivacampo-db-1; then
-    echo "❌ Error: Database container (vivacampo-db-1) is not running"
+if ! docker ps | grep -q vivacampo; then
+    echo "❌ Error: Database container (vivacampo) is not running"
     echo "Run: docker-compose up -d db"
     exit 1
 fi
@@ -35,7 +35,7 @@ for migration in $(ls -1 "$MIGRATION_DIR"/*.sql | sort); do
     migration_name=$(basename "$migration")
     echo "→ Executing: $migration_name"
 
-    if cat "$migration" | docker exec -i vivacampo-db-1 psql -U vivacampo -d vivacampo > /dev/null 2>&1; then
+    if cat "$migration" | docker exec -i vivacampo psql -U vivacampo -d vivacampo > /dev/null 2>&1; then
         echo "  ✓ Success"
     else
         echo "  ⚠️  Warning: Migration may have already been applied"
@@ -49,13 +49,13 @@ echo "========================================="
 echo ""
 
 # Verify tables
-tables=$(docker exec vivacampo-db-1 psql -U vivacampo -d vivacampo -t -c "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';" 2>/dev/null | tr -d ' ')
+tables=$(docker exec vivacampo psql -U vivacampo -d vivacampo -t -c "SELECT COUNT(*) FROM pg_tables WHERE schemaname='public';" 2>/dev/null | tr -d ' ')
 
 if [ -n "$tables" ] && [ "$tables" -gt 0 ]; then
     echo "✓ Found $tables tables in database"
     echo ""
     echo "Key tables:"
-    docker exec vivacampo-db-1 psql -U vivacampo -d vivacampo -c "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('identities', 'tenants', 'farms', 'aois', 'opportunity_signals') ORDER BY tablename;" 2>/dev/null | grep -E "identities|tenants|farms|aois|opportunity_signals" || echo "  (checking...)"
+    docker exec vivacampo psql -U vivacampo -d vivacampo -c "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('identities', 'tenants', 'farms', 'aois', 'opportunity_signals') ORDER BY tablename;" 2>/dev/null | grep -E "identities|tenants|farms|aois|opportunity_signals" || echo "  (checking...)"
 else
     echo "⚠️  Warning: No tables found in database"
 fi
