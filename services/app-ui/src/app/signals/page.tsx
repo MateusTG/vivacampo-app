@@ -49,8 +49,8 @@ export default function SignalsPage() {
         }
     }
 
-    const getSignalColor = (type: SignalType) => {
-        return APP_CONFIG.COLORS.SIGNAL_TYPES[type] || 'bg-gray-100 text-gray-800'
+    const getSignalColor = (type: string) => {
+        return APP_CONFIG.COLORS.SIGNAL_TYPES[type as SignalType] || 'bg-gray-100 text-gray-800'
     }
 
     const getStatusColor = (status: SignalStatus) => {
@@ -122,10 +122,10 @@ export default function SignalsPage() {
                                         Score: <span className="font-semibold">{signal.score.toFixed(2)}</span> |
                                         Detectado em: {new Date(signal.detected_at).toLocaleDateString('pt-BR')}
                                     </p>
-                                    {signal.recommended_action && (
+                                    {signal.recommended_actions && signal.recommended_actions.length > 0 && (
                                         <div className="mt-3 rounded-lg bg-blue-50 p-3">
                                             <p className="text-xs sm:text-sm font-medium text-blue-900">Ação Recomendada:</p>
-                                            <p className="mt-1 text-xs sm:text-sm text-blue-700">{signal.recommended_action}</p>
+                                            <p className="mt-1 text-xs sm:text-sm text-blue-700">{signal.recommended_actions[0]}</p>
                                         </div>
                                     )}
                                 </div>
